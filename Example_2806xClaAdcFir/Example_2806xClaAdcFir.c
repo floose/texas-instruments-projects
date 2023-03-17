@@ -99,7 +99,7 @@
 //      An ADC SOC will be started every ePWM1 period. 
 //      For a 10 KHz sampling rate:
 //      -> Tpwm = 2 x TBPRD x (1/40 MHz)
-//      -> TBPRD = (40MHz)/(2*10KHz) = 2000
+//      -> TBPRD = (40MHz)/(2*1MHz) = 20
 // 
 // PWM_PERIOD is the period for ePWM3. This will be sampled by the ADC.  
 // 
@@ -110,7 +110,7 @@
 //
 // FILTER_LEN is the FIR filter length
 //
-#define ADC_SAMPLE_PERIOD	2000 
+#define ADC_SAMPLE_PERIOD	20
 #define PWM_PERIOD		    40000   
 #define PWM_DUTY_CYCLE		20000	
 #define ADC_BUF_LEN         200     
