@@ -79,7 +79,7 @@
 //
 #include "CLAShared.h"
 #include "string.h"
-
+#include <stdlib.h>
 //
 // Defines
 //
@@ -109,11 +109,21 @@
 //
 // FILTER_LEN is the FIR filter length
 //
-#define ADC_SAMPLE_PERIOD	10 //sampling rate of 1 MHz
-#define PWM_PERIOD		    40000 //low pwm freq of
-#define PWM_DUTY_CYCLE		20000	
+#define ADC_SAMPLE_PERIOD	20 //sampling rate of 1 MHz
+#define PWM_PERIOD		    200 //low pwm freq of
+#define PWM_DUTY_CYCLE		100
 #define ADC_BUF_LEN         200     
+//
+//Defines for Manchester detection
+//
+#define THRESHOLD 2000
+#define SYMBOL_SIZE 20
 
+//
+//Functions for the manchester dectection
+//
+void process_manchester();
+void process_bit();
 // 
 // Function Prototypes used to init the peripherals
 //
@@ -142,8 +152,9 @@ __interrupt void cla1_isr7(void);
 //             to the main CPU through the message RAM
 //
 Uint16 SampleCount;
-//Uint16 AdcBuf[ADC_BUF_LEN];
+Uint16 AdcBuf[ADC_BUF_LEN];
 Uint16 AdcFiltBuf[ADC_BUF_LEN];
+char output_char = 0;
 
 //
 // The DATA_SECTION pragma statements are used to place the variables in 
@@ -174,8 +185,8 @@ Uint16 VoltFilt;
 #pragma DATA_SECTION(A,          "CpuToCla1MsgRAM");
 
 #if LOWPASS
-    //LPF Filter of fc = 0.3  0.020195  0.23095 0.49772 0.23095 0.020195
-    float32 A [FILTER_LEN] = {0.020195L, 0.23095L, 0.49772L, 0.23095L, 0.020195L};
+    //LPF Filter of fc = 0.8:  -0.01241  0.10378 0.81727 0.10378 -0.01241
+    float32 A [FILTER_LEN] = {-0.01241L, 0.10378L, 0.81727L, 0.10378L, -0.01241L};
     //original filter of application
     //float32 A [FILTER_LEN] = {0.0625L, 0.25L, 0.375L, 0.25L, 0.0625L};
 #elif HIGHPASS
@@ -300,7 +311,7 @@ void main(void)
     //
     for (i = 0; i< ADC_BUF_LEN; i++)
     {
-        //AdcBuf[i] = 0x0000;
+        AdcBuf[i] = 0x0000;
         AdcFiltBuf[i] = 0x0000;
     } 
 
@@ -348,7 +359,8 @@ void main(void)
         if(SampleCount == ADC_BUF_LEN-1)
         {
             //inline assembly used to halt processor
-            //__asm(" ESTOP0");
+            __asm(" ESTOP0");
+            //process_manchester();
         }
     }
 }
@@ -375,7 +387,7 @@ cla1_isr7()
     // put it into the AdcBuf buffer
     // This can be compared to the CLA filtered value
     //
-    //AdcBuf[SampleCount] = AdcResult.ADCRESULT1;
+    AdcBuf[SampleCount] = AdcResult.ADCRESULT1;
 
     //
     // Read the CLA filtered value and put it in the
@@ -600,6 +612,42 @@ init_cla()
     // we configure the ePWM and ADC modules
     //
     Cla1ForceTask8(); 
+}
+
+void process_manchester()
+{
+    static Uint16 i = 1;
+    static char decoded_byte = 0;
+    static Uint16 bit_count = 0;
+
+    //sweeps the buffer
+    while(i < ADC_BUF_LEN)
+    {
+        //detects transition
+       if((abs(AdcFiltBuf[i] - AdcFiltBuf[i-1])) > THRESHOLD)
+       {
+           //detects symbol transition
+          if(AdcFiltBuf[i] > AdcFiltBuf[i-1])
+          {
+              output_char = output_char << 1;
+              bit_count++;
+          }
+          else
+          {
+              output_char = output_char << 1;
+              decoded_byte |= 1;
+              bit_count++;
+          }
+       }
+
+       if(bit_count == 8)
+       {
+           bit_count = 0;
+           decoded_byte = 0x00;
+       }
+
+       i++;
+    }
 }
 
 //

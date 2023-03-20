@@ -42,6 +42,8 @@ Example_2806xClaAdcFir.obj: C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0
 Example_2806xClaAdcFir.obj: C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/string.h
 Example_2806xClaAdcFir.obj: C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/sys/cdefs.h
 Example_2806xClaAdcFir.obj: C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/xlocale/_string.h
+Example_2806xClaAdcFir.obj: C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/stdlib.h
+Example_2806xClaAdcFir.obj: C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/stdlibf.h
 
 ../Example_2806xClaAdcFir.c:
 
@@ -126,4 +128,8 @@ C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/string.h:
 C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/sys/cdefs.h:
 
 C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/xlocale/_string.h:
+
+C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/stdlib.h:
+
+C:/ti/ccs1210/ccs/tools/compiler/ti-cgt-c2000_22.6.0.LTS/include/stdlibf.h:
 
