@@ -83,7 +83,6 @@
 //
 // Defines
 //
-
 // 
 // If you want a low-pass filter, then set LOWPASS to 1
 // If you want a high-pass filter, then set HIGHPASS to 1
@@ -110,8 +109,8 @@
 //
 // FILTER_LEN is the FIR filter length
 //
-#define ADC_SAMPLE_PERIOD	20
-#define PWM_PERIOD		    40000   
+#define ADC_SAMPLE_PERIOD	10 //sampling rate of 1 MHz
+#define PWM_PERIOD		    40000 //low pwm freq of
 #define PWM_DUTY_CYCLE		20000	
 #define ADC_BUF_LEN         200     
 
@@ -143,7 +142,7 @@ __interrupt void cla1_isr7(void);
 //             to the main CPU through the message RAM
 //
 Uint16 SampleCount;
-Uint16 AdcBuf[ADC_BUF_LEN];
+//Uint16 AdcBuf[ADC_BUF_LEN];
 Uint16 AdcFiltBuf[ADC_BUF_LEN];
 
 //
@@ -175,7 +174,10 @@ Uint16 VoltFilt;
 #pragma DATA_SECTION(A,          "CpuToCla1MsgRAM");
 
 #if LOWPASS
-    float32 A [FILTER_LEN] = {0.0625L, 0.25L, 0.375L, 0.25L, 0.0625L};	    
+    //LPF Filter of fc = 0.3  0.020195  0.23095 0.49772 0.23095 0.020195
+    float32 A [FILTER_LEN] = {0.020195L, 0.23095L, 0.49772L, 0.23095L, 0.020195L};
+    //original filter of application
+    //float32 A [FILTER_LEN] = {0.0625L, 0.25L, 0.375L, 0.25L, 0.0625L};
 #elif HIGHPASS
     float32 A [FILTER_LEN] = {0.0625L, -0.25L, 0.375L, -0.25L, 0.0625L};	
 #endif
@@ -298,7 +300,7 @@ void main(void)
     //
     for (i = 0; i< ADC_BUF_LEN; i++)
     {
-        AdcBuf[i] = 0x0000;
+        //AdcBuf[i] = 0x0000;
         AdcFiltBuf[i] = 0x0000;
     } 
 
@@ -345,7 +347,8 @@ void main(void)
     {
         if(SampleCount == ADC_BUF_LEN-1)
         {
-            __asm(" ESTOP0");
+            //inline assembly used to halt processor
+            //__asm(" ESTOP0");
         }
     }
 }
@@ -372,7 +375,7 @@ cla1_isr7()
     // put it into the AdcBuf buffer
     // This can be compared to the CLA filtered value
     //
-    AdcBuf[SampleCount] = AdcResult.ADCRESULT1;
+    //AdcBuf[SampleCount] = AdcResult.ADCRESULT1;
 
     //
     // Read the CLA filtered value and put it in the
