@@ -109,19 +109,24 @@
 //
 // FILTER_LEN is the FIR filter length
 //
-#define ADC_SAMPLE_PERIOD	20 //sampling rate of 1 MHz
+#define ADC_SAMPLE_PERIOD	20 //sampling rate of 0.8 MHz
 #define PWM_PERIOD		    200 //low pwm freq of
 #define PWM_DUTY_CYCLE		100
-#define ADC_BUF_LEN         64
+#define ADC_BUF_LEN         100
 //
 //Defines for Manchester detection
 //
-#define THRESHOLD_MAN 2048
+#define THRESHOLD_MANCHESTER 2048
 
 //
-//Functions for the manchester dectection
+//Typedef of state machine to detect manchester signal
 //
 
+typedef enum {
+    IDLE,
+    PROCESSING_COMM_BUFFER,
+    COMM_BUFFER_READY
+} state_machine_t;
 // 
 // Function Prototypes used to init the peripherals
 //
@@ -188,8 +193,11 @@ Uint16 VoltFilt;
 #pragma DATA_SECTION(A,          "CpuToCla1MsgRAM");
 
 #if LOWPASS
-    //LPF Filter of fc = 0.8:  -0.01241  0.10378 0.81727 0.10378 -0.01241
-    float32 A [FILTER_LEN] = {-0.01241L, 0.10378L, 0.81727L, 0.10378L, -0.01241L};
+    //
+    //This low pass filter will be use to calculate the average value of the buffer
+    //
+    //LPF Filter of fc = 0.1:  0.033869 0.24015 0.45197 0.24015 0.033869
+    float32 A [FILTER_LEN] = {0.033869L, 0.24015L, 0.45197L, 0.24015L, 0.033869L};
     //original filter of application
     //float32 A [FILTER_LEN] = {0.0625L, 0.25L, 0.375L, 0.25L, 0.0625L};
 #elif HIGHPASS
