@@ -112,18 +112,16 @@
 #define ADC_SAMPLE_PERIOD	20 //sampling rate of 1 MHz
 #define PWM_PERIOD		    200 //low pwm freq of
 #define PWM_DUTY_CYCLE		100
-#define ADC_BUF_LEN         200     
+#define ADC_BUF_LEN         64
 //
 //Defines for Manchester detection
 //
-#define THRESHOLD 2000
-#define SYMBOL_SIZE 20
+#define THRESHOLD_MAN 2048
 
 //
 //Functions for the manchester dectection
 //
-void process_manchester();
-void process_bit();
+
 // 
 // Function Prototypes used to init the peripherals
 //
@@ -154,7 +152,12 @@ __interrupt void cla1_isr7(void);
 Uint16 SampleCount;
 Uint16 AdcBuf[ADC_BUF_LEN];
 Uint16 AdcFiltBuf[ADC_BUF_LEN];
-char output_char = 0;
+Uint8 output_char = 0;
+Uint8 bit_count = 0;
+Uint8 bytes_detected = 0;
+Uint16 dif;
+Uint8 sample_index = 0;
+
 
 //
 // The DATA_SECTION pragma statements are used to place the variables in 
@@ -208,7 +211,7 @@ extern Uint16 Cla1funcsLoadSize;
 //
 void main(void)
 {
-    Uint16 i;
+    Uint16 i = 0;
 
     //
     // Step 1. Initialize System Control:
@@ -359,8 +362,41 @@ void main(void)
         if(SampleCount == ADC_BUF_LEN-1)
         {
             //inline assembly used to halt processor
-            __asm(" ESTOP0");
+            //__asm(" ESTOP0");
             //process_manchester();
+
+            sample_index = (sample_index + 1) % ADC_BUF_LEN;
+
+            for(i = 1 ; i <= ADC_BUF_LEN; i++)
+            {
+
+                    dif = abs(AdcBuf[i] - AdcBuf[i-1]);
+                    //detects transition
+                   if( dif > THRESHOLD_MAN)
+                   {
+                       //detects symbol transition
+                      if(AdcBuf[i] > AdcBuf[i-1])
+                      {
+                          output_char = output_char << 1;
+                          bit_count++;
+                      }
+                      else
+                      {
+                          output_char = output_char << 1;
+                          output_char |= 1;
+                          bit_count++;
+                      }
+
+                       //resets the byte
+                       if(bit_count == 7)
+                       {
+                           bit_count = 0;
+                           output_char = 0x00;
+                           bytes_detected++;
+                       }
+
+                   }
+            }
         }
     }
 }
@@ -614,41 +650,7 @@ init_cla()
     Cla1ForceTask8(); 
 }
 
-void process_manchester()
-{
-    static Uint16 i = 1;
-    static char decoded_byte = 0;
-    static Uint16 bit_count = 0;
 
-    //sweeps the buffer
-    while(i < ADC_BUF_LEN)
-    {
-        //detects transition
-       if((abs(AdcFiltBuf[i] - AdcFiltBuf[i-1])) > THRESHOLD)
-       {
-           //detects symbol transition
-          if(AdcFiltBuf[i] > AdcFiltBuf[i-1])
-          {
-              output_char = output_char << 1;
-              bit_count++;
-          }
-          else
-          {
-              output_char = output_char << 1;
-              decoded_byte |= 1;
-              bit_count++;
-          }
-       }
-
-       if(bit_count == 8)
-       {
-           bit_count = 0;
-           decoded_byte = 0x00;
-       }
-
-       i++;
-    }
-}
 
 //
 // End of File
