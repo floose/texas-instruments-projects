@@ -109,10 +109,10 @@
 //
 // FILTER_LEN is the FIR filter length
 //
-#define ADC_SAMPLE_PERIOD	20 //sampling rate of 0.8 MHz
-#define PWM_PERIOD		    200 //low pwm freq of
-#define PWM_DUTY_CYCLE		100
-#define ADC_BUF_LEN         100
+#define ADC_SAMPLE_PERIOD   20 //sampling rate of 1 MHz
+#define PWM_PERIOD          200 //low pwm freq of
+#define PWM_DUTY_CYCLE      100
+#define ADC_BUF_LEN         160 //holds 2 bytes with 10 samples per bit
 //
 //Defines for Manchester detection
 //
@@ -127,6 +127,7 @@ typedef enum {
     PROCESSING_COMM_BUFFER,
     COMM_BUFFER_READY
 } state_machine_t;
+
 // 
 // Function Prototypes used to init the peripherals
 //
@@ -156,14 +157,8 @@ __interrupt void cla1_isr7(void);
 //
 Uint16 SampleCount;
 Uint16 AdcBuf[ADC_BUF_LEN];
-Uint16 AdcFiltBuf[ADC_BUF_LEN];
-Uint8 output_char = 0;
-Uint8 bit_count = 0;
-Uint8 bytes_detected = 0;
-Uint16 dif;
-Uint8 sample_index = 0;
-
-
+Uint16 AdcFiltBuf[ADC_BUF_LEN]; //temporary buffer... only to watch avg value over time
+Uint16 CommsBuffer[ADC_BUF_LEN]; //buffer that will hold the capture manchester bits
 //
 // The DATA_SECTION pragma statements are used to place the variables in 
 // specific assembly sections.  These sections are linked to the message RAMs
@@ -201,7 +196,7 @@ Uint16 VoltFilt;
     //original filter of application
     //float32 A [FILTER_LEN] = {0.0625L, 0.25L, 0.375L, 0.25L, 0.0625L};
 #elif HIGHPASS
-    float32 A [FILTER_LEN] = {0.0625L, -0.25L, 0.375L, -0.25L, 0.0625L};	
+    float32 A [FILTER_LEN] = {0.0625L, -0.25L, 0.375L, -0.25L, 0.0625L};
 #endif
 
 //
@@ -219,7 +214,8 @@ extern Uint16 Cla1funcsLoadSize;
 //
 void main(void)
 {
-    Uint16 i = 0;
+    Uint16 i = 0; //counter variable
+    state_machine_t state_t = IDLE; //state variable to monitor de state machine. Starts at IDLE
 
     //
     // Step 1. Initialize System Control:
@@ -314,8 +310,8 @@ void main(void)
     //
     PieCtrlRegs.PIEIER11.bit.INTx7 = 1;      
     IER |= M_INT11;                         
-    EINT;          						   
-    ERTM;          						   
+    EINT;
+    ERTM;
 
     //
     // Clear the output buffers
@@ -336,7 +332,7 @@ void main(void)
     // After configuration they can all be started again
     // in syncronization by setting this bit.
     //
-    EALLOW;					   
+    EALLOW;
     SysCtrlRegs.PCLKCR0.bit.TBCLKSYNC = 0;
     EDIS;
 
@@ -371,40 +367,9 @@ void main(void)
         {
             //inline assembly used to halt processor
             //__asm(" ESTOP0");
-            //process_manchester();
+            //do something with the buffer?
 
-            sample_index = (sample_index + 1) % ADC_BUF_LEN;
 
-            for(i = 1 ; i <= ADC_BUF_LEN; i++)
-            {
-
-                    dif = abs(AdcBuf[i] - AdcBuf[i-1]);
-                    //detects transition
-                   if( dif > THRESHOLD_MAN)
-                   {
-                       //detects symbol transition
-                      if(AdcBuf[i] > AdcBuf[i-1])
-                      {
-                          output_char = output_char << 1;
-                          bit_count++;
-                      }
-                      else
-                      {
-                          output_char = output_char << 1;
-                          output_char |= 1;
-                          bit_count++;
-                      }
-
-                       //resets the byte
-                       if(bit_count == 7)
-                       {
-                           bit_count = 0;
-                           output_char = 0x00;
-                           bytes_detected++;
-                       }
-
-                   }
-            }
         }
     }
 }
@@ -424,7 +389,7 @@ cla1_isr7()
     //
     AdcRegs.ADCINTFLGCLR.bit.ADCINT7 = 1;       
     PieCtrlRegs.PIEACK.all = 0xFFFF;
-    GpioDataRegs.GPATOGGLE.bit.GPIO18 = 1;		
+    GpioDataRegs.GPATOGGLE.bit.GPIO18 = 1;
 
     //
     // Read the raw ADC RESULT1 register value and
@@ -446,7 +411,7 @@ cla1_isr7()
     //
     SampleCount++;
     if( SampleCount == ADC_BUF_LEN )
-    {	
+    {
         SampleCount = 0;
     }
 }
@@ -486,22 +451,22 @@ init_adc(void)
     // ADC interrupt comes early (end of sample window)
     // SOC1 will trigger ADCINT7
     // Enable ADCINT7
-    // Disable ADCINT7 Continuous mode	    
+    // Disable ADCINT7 Continuous mode
     //
-    AdcRegs.ADCCTL2.bit.ADCNONOVERLAP = 1;	// Enable non-overlap mode
+    AdcRegs.ADCCTL2.bit.ADCNONOVERLAP = 1;  // Enable non-overlap mode
     AdcRegs.ADCCTL1.bit.INTPULSEPOS = 0;
     AdcRegs.INTSEL7N8.bit.INT7SEL   = 1;
-    AdcRegs.INTSEL7N8.bit.INT7E     = 1;	    
+    AdcRegs.INTSEL7N8.bit.INT7E     = 1;
     AdcRegs.INTSEL7N8.bit.INT7CONT  = 0;
 
     //
     // set SOC1 channel select to ADCINA2
-    // set SOC1 start trigger on EPWM1A interrupt  	    
+    // set SOC1 start trigger on EPWM1A interrupt
     // set SOC1 S/H Window to 7 ADC Clock Cycles, (6 ACQPS plus 1)
     //
     AdcRegs.ADCSOC1CTL.bit.CHSEL    = 2;   
     AdcRegs.ADCSOC1CTL.bit.TRIGSEL  = 5;     
-    AdcRegs.ADCSOC1CTL.bit.ACQPS    = 6;	    
+    AdcRegs.ADCSOC1CTL.bit.ACQPS    = 6;
     EDIS;
 }          
 
@@ -526,11 +491,11 @@ init_epwm1(void)
     // By default TBPRD = 1/2 SYSCLKOUT 
     // Set the counter for up count mode
     //
-    EPwm1Regs.TBPRD 			= ADC_SAMPLE_PERIOD;  
-    EPwm1Regs.TBCTL.bit.CTRMODE	= TB_COUNT_UP;	   
-    EPwm1Regs.ETSEL.bit.SOCAEN	= 1;	   
-    EPwm1Regs.ETSEL.bit.SOCASEL	= ET_CTR_ZERO;	   
-    EPwm1Regs.ETPS.bit.SOCAPRD 	= ET_1ST;	   
+    EPwm1Regs.TBPRD             = ADC_SAMPLE_PERIOD;
+    EPwm1Regs.TBCTL.bit.CTRMODE = TB_COUNT_UP;
+    EPwm1Regs.ETSEL.bit.SOCAEN  = 1;
+    EPwm1Regs.ETSEL.bit.SOCASEL = ET_CTR_ZERO;
+    EPwm1Regs.ETPS.bit.SOCAPRD  = ET_1ST;
 
     //
     // For testing - monitor the EPWM1A output which toggles once every ePWM 
@@ -564,7 +529,7 @@ init_epwm3(void)
     // emulation halt (PWM will continue to count when
     // the CPU is halted)
     //
-    EPwm3Regs.TBCTL.bit.CTRMODE = 0x3;		
+    EPwm3Regs.TBCTL.bit.CTRMODE = 0x3;
     EPwm3Regs.TBCTL.bit.FREE_SOFT = 3; 
 
     //
@@ -572,8 +537,8 @@ init_epwm3(void)
     // Set the period and timer phase
     // Specify when the compare A event will occur
     //
-    EPwm3Regs.TBCTR = 0x0000;			   
-    EPwm3Regs.TBPRD = PWM_PERIOD;	   
+    EPwm3Regs.TBCTR = 0x0000;
+    EPwm3Regs.TBPRD = PWM_PERIOD;
     EPwm3Regs.TBPHS.half.TBPHS = 0x0000;   
     EPwm3Regs.CMPA.half.CMPA = PWM_DUTY_CYCLE;
 
@@ -584,7 +549,7 @@ init_epwm3(void)
     //
     EPwm3Regs.AQCTLA.bit.CAU = AQ_SET;
     EPwm3Regs.AQCTLA.bit.CAD = AQ_CLEAR;
-    EPwm3Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN;		
+    EPwm3Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN;
 } 
 
 //
