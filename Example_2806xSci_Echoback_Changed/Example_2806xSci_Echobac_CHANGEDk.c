@@ -89,7 +89,7 @@
 //
 #include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
 
-
+//these values are for a 200'000 baud rate
 #define LOW_DATA_RATE_REG 0x000d
 #define HIGH_DATA_RATE_REG 0x0000
 
@@ -103,6 +103,7 @@ void scia_fifo_init(void);
 void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
+void init_gpio_toggle();
 
 //
 // Globals
@@ -117,6 +118,7 @@ void main(void)
 {
     Uint16 ReceivedChar;
     char *msg;
+
 
     //
     // Step 1. Initialize System Control:
@@ -138,6 +140,7 @@ void main(void)
     //
     InitSciaGpio();
     InitScibGpio();
+
 
     //
     // Step 3. Clear all interrupts and initialize PIE vector table:
@@ -185,6 +188,7 @@ void main(void)
     scib_fifo_init();
     scia_echoback_init();  // Initalize SCI for echoback
     scib_echoback_init();  // Initalize SCI for echoback
+    init_gpio_toggle();
 
     msg = "\r\n\n\nHello World!\0";
     scia_msg(msg);
@@ -212,6 +216,8 @@ void main(void)
         //
         ReceivedChar = ScibRegs.SCIRXBUF.all;
 
+        //Toggles GPIO0 every interruption (used to check time between isr's)
+        GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
         //
         // Echo character back
         //
@@ -365,6 +371,18 @@ scib_msg(char * msg)
     }
 }
 
+
+void init_gpio_toggle()
+{
+    EALLOW;
+    //GPIO0 toggles at every ISR
+    GpioCtrlRegs.GPADIR.bit.GPIO0 = 1; //configures GPIO0 as output
+    GpioDataRegs.GPADAT.bit.GPIO0 = 0; //sets to zero
+    //GPIO0 toggles at every manchester decode, when the data buffer is full
+    GpioCtrlRegs.GPADIR.bit.GPIO1 = 1; //configures GPIO0 as output
+    GpioDataRegs.GPADAT.bit.GPIO1 = 0; //sets to zero
+    EDIS;
+}
 //
 // End of File
 //
