@@ -88,11 +88,14 @@
 // Included Files
 //
 #include "DSP28x_Project.h"     // Device Headerfile and Examples Include File
+#include <stdint.h>
+
+//defines to activate certain functions
+//#define GPIO_TOGGLE //configs and toggles gpio for monitoring
 
 //these values are for a 200'000 baud rate
 #define LOW_DATA_RATE_REG 0x000d
 #define HIGH_DATA_RATE_REG 0x0000
-
 
 //
 // Function Prototypes
@@ -103,22 +106,27 @@ void scia_fifo_init(void);
 void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
+
+#ifdef GPIO_TOGGLE
 void init_gpio_toggle();
+#endif
+
+int encode_manchester(int input);
+int decode_manchester(int input);
 
 //
 // Globals
 //
-Uint16 LoopCount;
-Uint16 ErrorCount;
+int Loopcount = 0;
+int ReceivedManchSymbol = 0;
 
 //
 // Main
 //
 void main(void)
 {
-    Uint16 ReceivedChar;
+    int ReceivedChar = 0;
     char *msg;
-
 
     //
     // Step 1. Initialize System Control:
@@ -140,7 +148,6 @@ void main(void)
     //
     InitSciaGpio();
     InitScibGpio();
-
 
     //
     // Step 3. Clear all interrupts and initialize PIE vector table:
@@ -181,15 +188,14 @@ void main(void)
     //
     // Step 5. User specific code
     //
-    LoopCount = 0;
-    ErrorCount = 0;
-
     scia_fifo_init();      // Initialize the SCI FIFO
     scib_fifo_init();
     scia_echoback_init();  // Initalize SCI for echoback
     scib_echoback_init();  // Initalize SCI for echoback
-    init_gpio_toggle();
 
+#ifdef GPIO_TOGGLE
+    init_gpio_toggle();
+#endif
     msg = "\r\n\n\nHello World!\0";
     scia_msg(msg);
 
@@ -215,17 +221,34 @@ void main(void)
         // Get character
         //
         ReceivedChar = ScibRegs.SCIRXBUF.all;
+        Loopcount++;
 
+
+        if(Loopcount == 1)
+        {
+            ReceivedManchSymbol = ReceivedChar;
+        }
+        else
+        if(Loopcount == 2)
+        {
+            ReceivedManchSymbol |= (ReceivedChar << 8 );
+            msg = "The decoded char is: \n\0";
+            scia_msg(msg);
+            scia_xmit(decode_manchester(ReceivedManchSymbol));
+            ReceivedManchSymbol = 0;
+            Loopcount = 0;
+            msg = "\n MSG ended. \n\0";
+            scia_msg(msg);
+        }
+
+
+#ifdef GPIO_TOGGLE
         //Toggles GPIO0 every interruption (used to check time between isr's)
         GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
-        //
-        // Echo character back
-        //
-        msg = "  You sent: \0";
-        scia_msg(msg);
-        scia_xmit(ReceivedChar);
+#endif
 
-        LoopCount++;
+        msg = "Looping through message... \n\0";
+        scia_msg(msg);
     }
 }
 
@@ -256,11 +279,13 @@ scia_echoback_init()
     SciaRegs.SCICTL2.bit.RXBKINTENA = 0;
 
     //
-    // 9600 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
+    // 115 200 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
     //
-    SciaRegs.SCIHBAUD    =HIGH_DATA_RATE_REG;
-    SciaRegs.SCILBAUD    =LOW_DATA_RATE_REG;
+    //SciaRegs.SCIHBAUD    =0x0000;
+    //SciaRegs.SCILBAUD    =0x0017;
 
+    SciaRegs.SCIHBAUD    =0x0000;
+    SciaRegs.SCILBAUD    =0x0017;
     SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
 }
 
@@ -288,7 +313,7 @@ scib_echoback_init()
     ScibRegs.SCICTL2.bit.RXBKINTENA = 0;
 
     //
-    // 9600 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
+    // 200 000 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
     //
     ScibRegs.SCIHBAUD    =HIGH_DATA_RATE_REG;
     ScibRegs.SCILBAUD    =LOW_DATA_RATE_REG;;
@@ -371,7 +396,7 @@ scib_msg(char * msg)
     }
 }
 
-
+#ifdef GPIO_TOGGLE
 void init_gpio_toggle()
 {
     EALLOW;
@@ -383,7 +408,63 @@ void init_gpio_toggle()
     GpioDataRegs.GPADAT.bit.GPIO1 = 0; //sets to zero
     EDIS;
 }
-//
+#endif
+
+int encode_manchester(int input)
+{
+    int clk_mask = 0xAAAA; //clock mask
+    int filter_mask = 0x00FF; //to filter first 8 bits
+    int bit_iterator = 0x0001;
+    int aux = input & filter_mask; //filters the first 8 bits
+    int result = 0x0000;
+    int i = 0;
+
+    while( i < 7)
+    {
+        //filters the bit;
+        if(aux & (bit_iterator << i))
+        {
+            result = result << 2; //appends 2 0s to result
+            result |= 0x03; //converts 0s to two 1s to result;
+        }
+        else
+        {
+            result = result << 2; //appends 2 0s to result
+        }
+        i++;
+    }
+
+    result = result ^ clk_mask; // apply xor op with clk
+
+    return result;
+}
+
+int decode_manchester(int input)
+{
+    int filter_mask = 0xFFFF; //to filter first 16 bits
+    int mask_for_1 = 0x0001;
+    int aux = input & filter_mask; //filters the first 16 bits
+    int iterator_2_bits = 0x0003;
+    int result = 0x0000;
+    int i = 0;
+
+    while(i < 7)
+    {
+        if((aux & (iterator_2_bits << 2*i)) & (mask_for_1 << 2*i))
+        {
+            result = result << 1; //append 0 to result
+            result |= 1; //transforms appended 0 into 1
+        }
+        else
+        {
+            result = result << 1; //append 0 to result
+        }
+        i++;
+    }
+    return result;
+}
+
+
 // End of File
 //
 
