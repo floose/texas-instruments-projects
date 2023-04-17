@@ -94,8 +94,16 @@
 //#define GPIO_TOGGLE //configs and toggles gpio for monitoring
 
 //these values are for a 200'000 baud rate
-#define LOW_DATA_RATE_REG 0x000d
+//#define LOW_DATA_RATE_REG 0x000d
+//#define HIGH_DATA_RATE_REG 0x0000
+
+//these values are test values for 9600 bps
+//#define HIGH_DATA_RATE_REG 0x0001;
+//#define LOW_DATA_RATE_REG 0x0024;
+
+//these values are test values for 115 200 bps
 #define HIGH_DATA_RATE_REG 0x0000
+#define LOW_DATA_RATE_REG 0x0017
 
 //
 // Function Prototypes
@@ -106,6 +114,7 @@ void scia_fifo_init(void);
 void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
+void show_init_msg();
 
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
@@ -192,19 +201,17 @@ void main(void)
     scib_fifo_init();
     scia_echoback_init();  // Initalize SCI for echoback
     scib_echoback_init();  // Initalize SCI for echoback
+    show_init_msg();
 
 #ifdef GPIO_TOGGLE
     init_gpio_toggle();
 #endif
-    msg = "\r\n\n\nHello World!\0";
-    scia_msg(msg);
 
-    //msg = "\r\nYou will enter a character, and the DSP will echo it back! \n\0";
-    //scia_msg(msg);
 
     for(;;)
     {
-        msg = "\r\nWaiting character: \0";
+
+        msg = "\r\nWaiting for a received message...\n\0";
         scia_msg(msg);
 
         //
@@ -281,11 +288,16 @@ scia_echoback_init()
     //
     // 115 200 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
     //
-    //SciaRegs.SCIHBAUD    =0x0000;
+
+   //SciaRegs.SCIHBAUD    =0x0000;
     //SciaRegs.SCILBAUD    =0x0017;
 
-    SciaRegs.SCIHBAUD    =0x0000;
-    SciaRegs.SCILBAUD    =0x0017;
+    //
+    // 200 000 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
+    //
+    SciaRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
+    SciaRegs.SCILBAUD   = LOW_DATA_RATE_REG;;
+
     SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
 }
 
@@ -315,8 +327,8 @@ scib_echoback_init()
     //
     // 200 000 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
     //
-    ScibRegs.SCIHBAUD    =HIGH_DATA_RATE_REG;
-    ScibRegs.SCILBAUD    =LOW_DATA_RATE_REG;;
+    ScibRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
+    ScibRegs.SCILBAUD   = LOW_DATA_RATE_REG;;
 
     ScibRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
 }
@@ -464,6 +476,19 @@ int decode_manchester(int input)
     return result;
 }
 
+void show_init_msg()
+{
+    char *local_msg;
+
+    local_msg = "\r\n PLC-VLC Manchester Receiver Program\0";
+    scia_msg(local_msg);
+    local_msg = "\r\n Version 1.0 (rudimentary)\0";
+    scia_msg(local_msg);
+    local_msg = "\r\n Author: Felipe Loose\0";
+    scia_msg(local_msg);
+    local_msg = "\r\n======\0";
+    scia_msg(local_msg);
+}
 
 // End of File
 //
