@@ -102,8 +102,19 @@
 //#define LOW_DATA_RATE_REG 0x0024;
 
 //these values are test values for 115 200 bps
+//#define HIGH_DATA_RATE_REG 0x0000
+//#define LOW_DATA_RATE_REG 0x0017
+
+//thse values are the test values for 937 500 bps (aprox. 1 MHz)
 #define HIGH_DATA_RATE_REG 0x0000
-#define LOW_DATA_RATE_REG 0x0017
+#define LOW_DATA_RATE_REG 0x0002
+#define MAX_LENGTH 50
+
+//utilize these defines to control the data rate of the console-pc application
+//for now it is 115 200 bps
+#define CONSOLE_HIGH_DATA_RATE_REG 0x0000
+#define CONSOLE_LOW_DATA_RATE_REG  0x0017
+
 
 //
 // Function Prototypes
@@ -115,6 +126,7 @@ void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
 void show_init_msg();
+void format_string(); //format string needs to be written
 
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
@@ -126,15 +138,16 @@ int decode_manchester(int input);
 //
 // Globals
 //
-int Loopcount = 0;
-int ReceivedManchSymbol = 0;
-
+int message_array[MAX_LENGTH];
 //
 // Main
 //
 void main(void)
 {
     int ReceivedChar = 0;
+    int Loopcount = 0;
+    int ReceivedManchSymbol = 0;
+    int MessageCount = 0; //counts number of received characters
     char *msg;
 
     //
@@ -230,7 +243,6 @@ void main(void)
         ReceivedChar = ScibRegs.SCIRXBUF.all;
         Loopcount++;
 
-
         if(Loopcount == 1)
         {
             ReceivedManchSymbol = ReceivedChar;
@@ -238,13 +250,20 @@ void main(void)
         else
         if(Loopcount == 2)
         {
+
             ReceivedManchSymbol |= (ReceivedChar << 8 );
-            msg = "The decoded char is: \n\0";
+            msg = "\r\nThe decoded char is:\0";
             scia_msg(msg);
+
             scia_xmit(decode_manchester(ReceivedManchSymbol));
             ReceivedManchSymbol = 0;
+
+            //insert here format string function
+
             Loopcount = 0;
-            msg = "\n MSG ended. \n\0";
+            MessageCount++;
+
+            msg = "\r\n MSG ended.\0";
             scia_msg(msg);
         }
 
@@ -254,7 +273,7 @@ void main(void)
         GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
 #endif
 
-        msg = "Looping through message... \n\0";
+        msg = "\r\nLooping through message...\0";
         scia_msg(msg);
     }
 }
@@ -295,8 +314,8 @@ scia_echoback_init()
     //
     // 200 000 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
     //
-    SciaRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
-    SciaRegs.SCILBAUD   = LOW_DATA_RATE_REG;;
+    SciaRegs.SCIHBAUD    = CONSOLE_HIGH_DATA_RATE_REG;
+    SciaRegs.SCILBAUD   = CONSOLE_LOW_DATA_RATE_REG;
 
     SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
 }
