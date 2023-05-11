@@ -126,7 +126,7 @@ void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
 void show_init_msg();
-void format_string(); //format string needs to be written
+void format_string(char *string, int letter, int pos); //format string needs to be written
 
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
@@ -507,6 +507,21 @@ void show_init_msg()
     scia_msg(local_msg);
     local_msg = "\r\n======\0";
     scia_msg(local_msg);
+}
+
+void format_string(char *string, int letter, int pos)
+{
+    char *msg;
+    if(pos > MAX_LENGTH)
+    {
+        msg = "\r\n output string overflow!\0";
+        string = msg;
+        return 0;
+    }
+
+
+
+
 }
 
 // End of File
