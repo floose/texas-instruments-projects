@@ -108,7 +108,7 @@
 //thse values are the test values for 937 500 bps (aprox. 1 MHz)
 #define HIGH_DATA_RATE_REG 0x0000
 #define LOW_DATA_RATE_REG 0x0002
-#define MAX_LENGTH 50
+#define MAX_LENGTH 30
 
 //utilize these defines to control the data rate of the console-pc application
 //for now it is 115 200 bps
@@ -126,7 +126,7 @@ void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
 void show_init_msg();
-void format_string(char *string, int letter, int pos); //format string needs to be written
+//void format_string(char *string, int letter, int pos); //format string needs to be written
 
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
@@ -138,8 +138,8 @@ int decode_manchester(int input);
 //
 // Globals
 //
-int message_array[MAX_LENGTH];
 //
+int manchester_symbol_decoded = 0;
 // Main
 //
 void main(void)
@@ -149,6 +149,7 @@ void main(void)
     int ReceivedManchSymbol = 0;
     int MessageCount = 0; //counts number of received characters
     char *msg;
+    //int manchester_symbol_decoded = 0;
 
     //
     // Step 1. Initialize System Control:
@@ -252,16 +253,22 @@ void main(void)
         {
 
             ReceivedManchSymbol |= (ReceivedChar << 8 );
-            msg = "\r\nThe decoded char is:\0";
+            msg = "\r\nThe decoded char is: \n\0";
             scia_msg(msg);
 
-            scia_xmit(decode_manchester(ReceivedManchSymbol));
-            ReceivedManchSymbol = 0;
+            //scia_xmit(decode_manchester(ReceivedManchSymbol));
+            manchester_symbol_decoded = decode_manchester(ReceivedManchSymbol);
+            scia_xmit(manchester_symbol_decoded);
+            //trying to work with some kind of way to print data continously.
+            //ReceivedManchSymbol = 0;
 
-            //insert here format string function
+            Loopcount = 0; //resets state machine of manchester decoder
+            MessageCount++; //increments message count array
 
-            Loopcount = 0;
-            MessageCount++;
+            if(MessageCount > MAX_LENGTH)
+            {
+                MessageCount = 0;
+            }
 
             msg = "\r\n MSG ended.\0";
             scia_msg(msg);
@@ -311,9 +318,7 @@ scia_echoback_init()
    //SciaRegs.SCIHBAUD    =0x0000;
     //SciaRegs.SCILBAUD    =0x0017;
 
-    //
-    // 200 000 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
-    //
+    //confid baud rate
     SciaRegs.SCIHBAUD    = CONSOLE_HIGH_DATA_RATE_REG;
     SciaRegs.SCILBAUD   = CONSOLE_LOW_DATA_RATE_REG;
 
@@ -343,9 +348,7 @@ scib_echoback_init()
     ScibRegs.SCICTL2.bit.TXINTENA = 0;
     ScibRegs.SCICTL2.bit.RXBKINTENA = 0;
 
-    //
-    // 200 000 baud @LSPCLK = 22.5MHz (90 MHz SYSCLK)
-    //
+    //confid baud rate
     ScibRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
     ScibRegs.SCILBAUD   = LOW_DATA_RATE_REG;;
 
@@ -501,7 +504,7 @@ void show_init_msg()
 
     local_msg = "\r\n PLC-VLC Manchester Receiver Program\0";
     scia_msg(local_msg);
-    local_msg = "\r\n Version 1.0 (rudimentary)\0";
+    local_msg = "\r\n Version 1.0\0";
     scia_msg(local_msg);
     local_msg = "\r\n Author: Felipe Loose\0";
     scia_msg(local_msg);
@@ -509,20 +512,10 @@ void show_init_msg()
     scia_msg(local_msg);
 }
 
-void format_string(char *string, int letter, int pos)
-{
-    char *msg;
-    if(pos > MAX_LENGTH)
-    {
-        msg = "\r\n output string overflow!\0";
-        string = msg;
-        return 0;
-    }
 
 
 
 
-}
 
 // End of File
 //
