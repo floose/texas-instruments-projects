@@ -91,7 +91,7 @@
 #include <stdint.h>
 
 //defines to activate certain functions
-//#define GPIO_TOGGLE //configs and toggles gpio for monitoring
+#define GPIO_TOGGLE //configs and toggles gpio for monitoring
 
 //these values are for a 200'000 baud rate
 //#define LOW_DATA_RATE_REG 0x000d
@@ -108,7 +108,7 @@
 //thse values are the test values for 937 500 bps (aprox. 1 MHz)
 #define HIGH_DATA_RATE_REG 0x0000
 #define LOW_DATA_RATE_REG 0x0002
-#define MAX_LENGTH 30
+#define MAX_LEN 30
 
 //utilize these defines to control the data rate of the console-pc application
 //for now it is 115 200 bps
@@ -130,6 +130,7 @@ void show_init_msg();
 
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
+void gpio0_toggle();
 #endif
 
 int encode_manchester(int input);
@@ -140,16 +141,26 @@ int decode_manchester(int input);
 //
 //
 int manchester_symbol_decoded = 0;
+char arraymessage[MAX_LEN];
+
+
 // Main
 //
 void main(void)
 {
     int ReceivedChar = 0;
-    int Loopcount = 0;
     int ReceivedManchSymbol = 0;
-    int MessageCount = 0; //counts number of received characters
+    static int MessageCount = 0; //counts number of received characters- Remove static when done.
+    static int Loopcount = 0;
     char *msg;
     //int manchester_symbol_decoded = 0;
+
+    //zeroing the array
+    for(Loopcount = 0; Loopcount < MAX_LEN ; Loopcount++)
+    {
+        arraymessage[Loopcount] = 0;
+    }
+    Loopcount = 0; //reseting the variable
 
     //
     // Step 1. Initialize System Control:
@@ -213,8 +224,8 @@ void main(void)
     //
     scia_fifo_init();      // Initialize the SCI FIFO
     scib_fifo_init();
-    scia_echoback_init();  // Initalize SCI for echoback
-    scib_echoback_init();  // Initalize SCI for echoback
+    scia_echoback_init();  // Initalize SCI for console messaging
+    scib_echoback_init();  // Initalize SCI for MCU communication
     show_init_msg();
 
 #ifdef GPIO_TOGGLE
@@ -225,12 +236,20 @@ void main(void)
     for(;;)
     {
 
+#ifdef GPIO_TOGGLE
+        gpio0_toggle();
+#endif
+
         msg = "\r\nWaiting for a received message...\n\0";
         scia_msg(msg);
 
         //
         // Wait for inc character
         //
+
+        //tem alguma cooisa a ver com esse flag de aguarde aqui.
+        //e com o intervalo de procesasmento sser maior que o intervalo entre bursts
+        //preciso subir uma porta de saida para ver
         while(ScibRegs.SCIFFRX.bit.RXFFST !=1)
         {
             //
@@ -253,35 +272,56 @@ void main(void)
         {
 
             ReceivedManchSymbol |= (ReceivedChar << 8 );
-            msg = "\r\nThe decoded char is: \n\0";
-            scia_msg(msg);
+            //msg = "\r\nThe decoded char is: \n\0";
+            //scia_msg(msg);
 
             //scia_xmit(decode_manchester(ReceivedManchSymbol));
             manchester_symbol_decoded = decode_manchester(ReceivedManchSymbol);
-            scia_xmit(manchester_symbol_decoded);
-            //trying to work with some kind of way to print data continously.
-            //ReceivedManchSymbol = 0;
+            arraymessage[MessageCount] = (char)manchester_symbol_decoded;
+
+            //putting two scia_xmit does not work.
+            //Need to work with formated char.
+            //scia_xmit(manchester_symbol_decoded);
+            //scia_xmit('X');
 
             Loopcount = 0; //resets state machine of manchester decoder
             MessageCount++; //increments message count array
 
-            if(MessageCount > MAX_LENGTH)
+            //ScibRegs.SCIFFTX.bit.SCIRST = 0; //reset SCI transmit
+            //ScibRegs.SCIFFTX.bit.TXFIFOXRESET = 0;
+
+
+            if(MessageCount == 2)
             {
                 MessageCount = 0;
             }
 
-            msg = "\r\n MSG ended.\0";
-            scia_msg(msg);
+
+            //problem seems to be transmiting several char withou a pause
+            if(MessageCount == 5)
+            {
+                msg = "\r\nCount = 5.\n\0";
+                scia_msg(msg);
+
+                msg = arraymessage;
+                scia_msg(msg);
+
+                msg = "\r\nMSG ended.\0";
+                scia_msg(msg);
+
+                MessageCount = 0;
+            }
+
         }
 
 
-#ifdef GPIO_TOGGLE
-        //Toggles GPIO0 every interruption (used to check time between isr's)
-        GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
-#endif
 
         msg = "\r\nLooping through message...\0";
         scia_msg(msg);
+
+#ifdef GPIO_TOGGLE
+        gpio0_toggle();
+#endif
     }
 }
 
@@ -350,7 +390,7 @@ scib_echoback_init()
 
     //confid baud rate
     ScibRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
-    ScibRegs.SCILBAUD   = LOW_DATA_RATE_REG;;
+    ScibRegs.SCILBAUD   = LOW_DATA_RATE_REG;
 
     ScibRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
 }
@@ -398,7 +438,7 @@ void
 scib_fifo_init()
 {
     ScibRegs.SCIFFTX.all=0xE040;
-    ScibRegs.SCIFFRX.all=0x2044;
+    ScibRegs.SCIFFRX.all=0x2048;
     ScibRegs.SCIFFCT.all=0x0;
 }
 
@@ -442,6 +482,14 @@ void init_gpio_toggle()
     GpioDataRegs.GPADAT.bit.GPIO1 = 0; //sets to zero
     EDIS;
 }
+
+
+void gpio0_toggle()
+{
+   //Toggles GPIO0 every interruption (used to check time between isr's)
+   GpioDataRegs.GPATOGGLE.bit.GPIO0 = 1;
+}
+
 #endif
 
 int encode_manchester(int input)
