@@ -148,8 +148,8 @@ char arraymessage[MAX_LEN];
 //
 void main(void)
 {
-    int ReceivedChar = 0;
-    int ReceivedManchSymbol = 0;
+    static int ReceivedChar = 0;
+    static int ReceivedManchSymbol = 0;
     static int MessageCount = 0; //counts number of received characters- Remove static when done.
     static int Loopcount = 0;
     char *msg;
@@ -278,40 +278,16 @@ void main(void)
             //scia_xmit(decode_manchester(ReceivedManchSymbol));
             manchester_symbol_decoded = decode_manchester(ReceivedManchSymbol);
             arraymessage[MessageCount] = (char)manchester_symbol_decoded;
+            MessageCount++; //increments message count array
 
             //putting two scia_xmit does not work.
             //Need to work with formated char.
-            //scia_xmit(manchester_symbol_decoded);
+            scia_xmit(manchester_symbol_decoded);
             //scia_xmit('X');
 
             Loopcount = 0; //resets state machine of manchester decoder
-            MessageCount++; //increments message count array
-
-            //ScibRegs.SCIFFTX.bit.SCIRST = 0; //reset SCI transmit
-            //ScibRegs.SCIFFTX.bit.TXFIFOXRESET = 0;
-
-            //breakpoint trick
-            if(MessageCount == 2)
-            {
-                MessageCount = 0;
-            }
-
-
-            //problem seems to be transmiting several char withou a pause
-            if(MessageCount == 5)
-            {
-                msg = "\r\nCount = 5.\n\0";
-                scia_msg(msg);
-
-                msg = arraymessage;
-                scia_msg(msg);
-
-                msg = "\r\nMSG ended.\0";
-                scia_msg(msg);
-
-                MessageCount = 0;
-            }
-
+            ReceivedManchSymbol = 0; //resets the manchester symbol
+            manchester_symbol_decoded = 0; //resets the decoded symbol
         }
 
 
