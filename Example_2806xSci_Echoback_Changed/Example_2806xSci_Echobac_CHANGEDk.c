@@ -236,9 +236,9 @@ void main(void)
     for(;;)
     {
 
-#ifdef GPIO_TOGGLE
+        #ifdef GPIO_TOGGLE
         gpio0_toggle();
-#endif
+        #endif
 
         msg = "\r\nWaiting for a received message...\n\0";
         scia_msg(msg);
@@ -250,7 +250,7 @@ void main(void)
         //tem alguma cooisa a ver com esse flag de aguarde aqui.
         //e com o intervalo de procesasmento sser maior que o intervalo entre bursts
         //preciso subir uma porta de saida para ver
-        while(ScibRegs.SCIFFRX.bit.RXFFST !=1)
+        while(ScibRegs.SCIFFRX.bit.RXFFST == 0)
         {
             //
             // wait for XRDY =1 for empty state
@@ -290,7 +290,7 @@ void main(void)
             //ScibRegs.SCIFFTX.bit.SCIRST = 0; //reset SCI transmit
             //ScibRegs.SCIFFTX.bit.TXFIFOXRESET = 0;
 
-
+            //breakpoint trick
             if(MessageCount == 2)
             {
                 MessageCount = 0;
