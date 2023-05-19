@@ -140,8 +140,9 @@ int decode_manchester(int input);
 // Globals
 //
 //
-int manchester_symbol_decoded = 0;
+char manchester_symbol_decoded = 0;
 char arraymessage[MAX_LEN];
+char temp_vector[MAX_LEN];
 
 
 // Main
@@ -153,6 +154,7 @@ void main(void)
     static int MessageCount = 0; //counts number of received characters- Remove static when done.
     static int Loopcount = 0;
     char *msg;
+    static int i = 0;
     //int manchester_symbol_decoded = 0;
 
     //zeroing the array
@@ -160,8 +162,13 @@ void main(void)
     {
         arraymessage[Loopcount] = 0;
     }
-    Loopcount = 0; //reseting the variable
 
+    //zeroing the array
+    for(Loopcount = 0; Loopcount < MAX_LEN ; Loopcount++)
+    {
+        temp_vector[Loopcount] = 0;
+    }
+    Loopcount = 0; //reseting the variable
     //
     // Step 1. Initialize System Control:
     // PLL, WatchDog, enable Peripheral Clocks
@@ -236,9 +243,9 @@ void main(void)
     for(;;)
     {
 
-        #ifdef GPIO_TOGGLE
+#ifdef GPIO_TOGGLE
         gpio0_toggle();
-        #endif
+#endif
 
         msg = "\r\nWaiting for a received message...\n\0";
         scia_msg(msg);
@@ -261,6 +268,11 @@ void main(void)
         // Get character
         //
         ReceivedChar = ScibRegs.SCIRXBUF.all;
+        //temp vector to check the messages.
+
+        temp_vector[i] = ReceivedChar;
+        i++;
+
         Loopcount++;
 
         if(Loopcount == 1)
@@ -272,12 +284,10 @@ void main(void)
         {
 
             ReceivedManchSymbol |= (ReceivedChar << 8 );
-            //msg = "\r\nThe decoded char is: \n\0";
-            //scia_msg(msg);
 
             //scia_xmit(decode_manchester(ReceivedManchSymbol));
             manchester_symbol_decoded = decode_manchester(ReceivedManchSymbol);
-            arraymessage[MessageCount] = (char)manchester_symbol_decoded;
+            arraymessage[MessageCount] = manchester_symbol_decoded;
             MessageCount++; //increments message count array
 
             //putting two scia_xmit does not work.
@@ -289,8 +299,6 @@ void main(void)
             ReceivedManchSymbol = 0; //resets the manchester symbol
             manchester_symbol_decoded = 0; //resets the decoded symbol
         }
-
-
 
         msg = "\r\nLooping through message...\0";
         scia_msg(msg);
