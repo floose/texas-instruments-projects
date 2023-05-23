@@ -108,13 +108,15 @@
 //thse values are the test values for 937 500 bps (aprox. 1 MHz)
 #define HIGH_DATA_RATE_REG 0x0000
 #define LOW_DATA_RATE_REG 0x0002
-#define MAX_LEN 30
+
 
 //utilize these defines to control the data rate of the console-pc application
 //for now it is 115 200 bps
 #define CONSOLE_HIGH_DATA_RATE_REG 0x0000
 #define CONSOLE_LOW_DATA_RATE_REG  0x0017
 
+//define max length of word buffer
+#define MAX_LEN 30
 
 //
 // Function Prototypes
@@ -143,7 +145,7 @@ int decode_manchester(int input);
 char manchester_symbol_decoded = 0;
 char arraymessage[MAX_LEN];
 char temp_vector[MAX_LEN];
-
+char temp_vector_emu[MAX_LEN];
 
 // Main
 //
@@ -161,13 +163,10 @@ void main(void)
     for(Loopcount = 0; Loopcount < MAX_LEN ; Loopcount++)
     {
         arraymessage[Loopcount] = 0;
+        temp_vector[Loopcount] = 0;
+        temp_vector_emu[Loopcount] = 0;
     }
 
-    //zeroing the array
-    for(Loopcount = 0; Loopcount < MAX_LEN ; Loopcount++)
-    {
-        temp_vector[Loopcount] = 0;
-    }
     Loopcount = 0; //reseting the variable
     //
     // Step 1. Initialize System Control:
@@ -230,7 +229,7 @@ void main(void)
     // Step 5. User specific code
     //
     scia_fifo_init();      // Initialize the SCI FIFO
-    scib_fifo_init();
+    //scib_fifo_init();
     scia_echoback_init();  // Initalize SCI for console messaging
     scib_echoback_init();  // Initalize SCI for MCU communication
     show_init_msg();
@@ -257,7 +256,8 @@ void main(void)
         //tem alguma cooisa a ver com esse flag de aguarde aqui.
         //e com o intervalo de procesasmento sser maior que o intervalo entre bursts
         //preciso subir uma porta de saida para ver
-        while(ScibRegs.SCIFFRX.bit.RXFFST == 0)
+        //while(ScibRegs.SCIFFRX.bit.RXFFST == 0)
+        while(ScibRegs.SCIRXST.bit.RXRDY == 0)
         {
             //
             // wait for XRDY =1 for empty state
@@ -271,8 +271,9 @@ void main(void)
         //temp vector to check the messages.
 
         temp_vector[i] = ReceivedChar;
-        i++;
+        temp_vector_emu[i] = ScibRegs.SCIRXEMU;
 
+        i++;
         Loopcount++;
 
         if(Loopcount == 1)
@@ -298,7 +299,13 @@ void main(void)
             Loopcount = 0; //resets state machine of manchester decoder
             ReceivedManchSymbol = 0; //resets the manchester symbol
             manchester_symbol_decoded = 0; //resets the decoded symbol
+
+            ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
+            ScibRegs.SCIFFRX.bit.RXFFINTCLR=1;   // Clear Interrupt flag
+
+            PieCtrlRegs.PIEACK.all|=0x100;       // Issue PIE ack
         }
+
 
         msg = "\r\nLooping through message...\0";
         scia_msg(msg);
@@ -376,7 +383,10 @@ scib_echoback_init()
     ScibRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
     ScibRegs.SCILBAUD   = LOW_DATA_RATE_REG;
 
-    ScibRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
+    ScibRegs.SCICTL1.all =0x0023;       // Relinquish SCI from Reset
+    //ScibRegs.SCIFFTX.bit.TXFIFOXRESET=1;
+    //ScibRegs.SCIFFRX.bit.RXFIFORESET=1;
+    //ScibRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
 }
 
 //
@@ -422,7 +432,9 @@ void
 scib_fifo_init()
 {
     ScibRegs.SCIFFTX.all=0xE040;
-    ScibRegs.SCIFFRX.all=0x2048;
+    //ScibRegs.SCIFFRX.all=0x2048; //original config
+    //ScibRegs.SCIFFRX.all=0x0008; //trial config
+    ScibRegs.SCIFFRX.all=0x204F; //trial config
     ScibRegs.SCIFFCT.all=0x0;
 }
 
