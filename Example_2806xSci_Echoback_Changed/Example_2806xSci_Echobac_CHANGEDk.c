@@ -485,10 +485,7 @@ void show_init_msg()
 
 __interrupt void scib_isr(void)
 {
-    char  *local_msg;
     static Uint32 pos = 0;
-    local_msg = "\r\n Interruption!\0";
-    scia_msg(local_msg);
 
     arraymessage[pos] = ScibRegs.SCIRXBUF.all;
     pos++;
@@ -501,9 +498,8 @@ __interrupt void scib_isr(void)
     }
 
 
-    //ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
+    ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
     ScibRegs.SCIFFRX.bit.RXFFINTCLR=1;   // Clear Interrupt flag
-
     PieCtrlRegs.PIEACK.all|=0x100;       // Issue PIE ack
 }
 
