@@ -492,6 +492,9 @@ __interrupt void scib_isr(void)
 
     arraymessage[pos] = ScibRegs.SCIRXBUF.all;
     pos++;
+    arraymessage[pos] = ScibRegs.SCIRXBUF.all;
+    pos++;
+
     if (pos == MAX_LEN)
     {
         pos = 0;
