@@ -128,46 +128,37 @@ void scib_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
 void show_init_msg();
-//void format_string(char *string, int letter, int pos); //format string needs to be written
+__interrupt void scib_isr(void);
 
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
 void gpio0_toggle();
 #endif
 
-int encode_manchester(int input);
-int decode_manchester(int input);
+Uint32 encode_manchester(Uint32 input);
+Uint32 decode_manchester(Uint32 input);
 
 //
 // Globals
 //
 //
-char manchester_symbol_decoded = 0;
 char arraymessage[MAX_LEN];
-char temp_vector[MAX_LEN];
-char temp_vector_emu[MAX_LEN];
+
 
 // Main
 //
 void main(void)
 {
-    static int ReceivedChar = 0;
-    static int ReceivedManchSymbol = 0;
-    static int MessageCount = 0; //counts number of received characters- Remove static when done.
-    static int Loopcount = 0;
-    char *msg;
-    static int i = 0;
+
+    Uint32 i;
     //int manchester_symbol_decoded = 0;
 
     //zeroing the array
-    for(Loopcount = 0; Loopcount < MAX_LEN ; Loopcount++)
+    for(i = 0; i < MAX_LEN; i++)
     {
-        arraymessage[Loopcount] = 0;
-        temp_vector[Loopcount] = 0;
-        temp_vector_emu[Loopcount] = 0;
+        arraymessage[i] = 0;
     }
 
-    Loopcount = 0; //reseting the variable
     //
     // Step 1. Initialize System Control:
     // PLL, WatchDog, enable Peripheral Clocks
@@ -218,12 +209,20 @@ void main(void)
     // This function is found in F2806x_PieVect.c.
     //
     InitPieVectTable();
-
+    EnableInterrupts();
     //
     // Step 4. Initialize all the Device Peripherals:
     // This function is found in F2806x_InitPeripherals.c
     //
     //InitPeripherals(); // Not required for this example
+    EALLOW;
+    PieVectTable.SCIRXINTB = &scib_isr;
+    EDIS;
+
+    //Set Interrupt of SCIB RX
+    PieCtrlRegs.PIECTRL.bit.ENPIE = 1;   // Enable the PIE block
+    PieCtrlRegs.PIEIER9.bit.INTx3=1;     // PIE Group 9, INTx3
+    IER = 0x100;                         // Enable CPU INT
 
     //
     // Step 5. User specific code
@@ -241,78 +240,11 @@ void main(void)
 
     for(;;)
     {
-
-#ifdef GPIO_TOGGLE
-        gpio0_toggle();
-#endif
-
-        msg = "\r\nWaiting for a received message...\n\0";
-        scia_msg(msg);
-
-        //
-        // Wait for inc character
-        //
-
-        //tem alguma cooisa a ver com esse flag de aguarde aqui.
-        //e com o intervalo de procesasmento sser maior que o intervalo entre bursts
-        //preciso subir uma porta de saida para ver
-        //while(ScibRegs.SCIFFRX.bit.RXFFST == 0)
-        while(ScibRegs.SCIRXST.bit.RXRDY == 0)
-        {
-            //
-            // wait for XRDY =1 for empty state
-            //
-        }
-
-        //
-        // Get character
-        //
-        ReceivedChar = ScibRegs.SCIRXBUF.all;
-        //temp vector to check the messages.
-
-        temp_vector[i] = ReceivedChar;
-        temp_vector_emu[i] = ScibRegs.SCIRXEMU;
-
-        i++;
-        Loopcount++;
-
-        if(Loopcount == 1)
-        {
-            ReceivedManchSymbol = ReceivedChar;
-        }
-        else
-        if(Loopcount == 2)
-        {
-
-            ReceivedManchSymbol |= (ReceivedChar << 8 );
-
-            //scia_xmit(decode_manchester(ReceivedManchSymbol));
-            manchester_symbol_decoded = decode_manchester(ReceivedManchSymbol);
-            arraymessage[MessageCount] = manchester_symbol_decoded;
-            MessageCount++; //increments message count array
-
-            //putting two scia_xmit does not work.
-            //Need to work with formated char.
-            scia_xmit(manchester_symbol_decoded);
-            //scia_xmit('X');
-
-            Loopcount = 0; //resets state machine of manchester decoder
-            ReceivedManchSymbol = 0; //resets the manchester symbol
-            manchester_symbol_decoded = 0; //resets the decoded symbol
-
-            ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
-            ScibRegs.SCIFFRX.bit.RXFFINTCLR=1;   // Clear Interrupt flag
-
-            PieCtrlRegs.PIEACK.all|=0x100;       // Issue PIE ack
-        }
-
-
-        msg = "\r\nLooping through message...\0";
-        scia_msg(msg);
-
-#ifdef GPIO_TOGGLE
-        gpio0_toggle();
-#endif
+        /*
+        DELAY_US(1000000);
+        scia_msg("\r\n I am on the loop!\0");
+        DELAY_US(10000000);
+        */
     }
 }
 
@@ -361,32 +293,27 @@ void
 scib_echoback_init()
 {
     //
-    // Note: Clocks were turned on to the SCIA peripheral
-    // in the InitSysCtrl() function
-    //
+        // 1 stop bit,  No loopback, No parity,8 char bits, async mode,
+        // idle-line protocol
+        //
+        ScibRegs.SCICCR.all =0x0007;
 
-    //
-    // 1 stop bit,  No loopback, No parity,8 char bits, async mode,
-    // idle-line protocol
-    //
-    ScibRegs.SCICCR.all =0x0007;
+        //
+        // enable TX, RX, internal SCICLK, Disable RX ERR, SLEEP, TXWAKE
+        //
+        ScibRegs.SCICTL1.all =0x0003;
+        ScibRegs.SCICTL2.bit.TXINTENA =1;
+        ScibRegs.SCICTL2.bit.RXBKINTENA =1;
+        ScibRegs.SCIHBAUD = HIGH_DATA_RATE_REG;
+        ScibRegs.SCILBAUD = LOW_DATA_RATE_REG;
+        ScibRegs.SCICCR.bit.LOOPBKENA =0;   // Enable loop back
+        ScibRegs.SCIFFTX.all=0xC022;
+        ScibRegs.SCIFFRX.all=0x0022;
+        ScibRegs.SCIFFCT.all=0x00;
 
-    //
-    // enable TX, RX, internal SCICLK, Disable RX ERR, SLEEP, TXWAKE
-    //
-    ScibRegs.SCICTL1.all =0x0003;
-
-    ScibRegs.SCICTL2.bit.TXINTENA = 0;
-    ScibRegs.SCICTL2.bit.RXBKINTENA = 0;
-
-    //confid baud rate
-    ScibRegs.SCIHBAUD    = HIGH_DATA_RATE_REG;
-    ScibRegs.SCILBAUD   = LOW_DATA_RATE_REG;
-
-    ScibRegs.SCICTL1.all =0x0023;       // Relinquish SCI from Reset
-    //ScibRegs.SCIFFTX.bit.TXFIFOXRESET=1;
-    //ScibRegs.SCIFFRX.bit.RXFIFORESET=1;
-    //ScibRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
+        ScibRegs.SCICTL1.all =0x0023;       // Relinquish SCI from Reset
+        ScibRegs.SCIFFTX.bit.TXFIFOXRESET=1;
+        ScibRegs.SCIFFRX.bit.RXFIFORESET=1;
 }
 
 //
@@ -408,7 +335,7 @@ scia_xmit(int a)
 void
 scia_msg(char * msg)
 {
-    int i;
+    Uint32 i;
     i = 0;
     while(msg[i] != '\0')
     {
@@ -417,7 +344,7 @@ scia_msg(char * msg)
     }
 }
 
-//
+//DELAY_US
 // scia_fifo_init - Initalize the SCI FIFO
 //
 void
@@ -442,7 +369,7 @@ scib_fifo_init()
 // scib_xmit - Transmit a character from the SCI
 //
 void
-scib_xmit(int a)
+scib_xmit(Uint32 a)
 {
     while (ScibRegs.SCIFFTX.bit.TXFFST != 0)
     {
@@ -455,9 +382,9 @@ scib_xmit(int a)
 // scia_msg -
 //
 void
-scib_msg(char * msg)
+scib_msg(Uint32 * msg)
 {
-    int i;
+    Uint32 i;
     i = 0;
     while(msg[i] != '\0')
     {
@@ -488,14 +415,14 @@ void gpio0_toggle()
 
 #endif
 
-int encode_manchester(int input)
+Uint32 encode_manchester(Uint32 input)
 {
-    int clk_mask = 0xAAAA; //clock mask
-    int filter_mask = 0x00FF; //to filter first 8 bits
-    int bit_iterator = 0x0001;
-    int aux = input & filter_mask; //filters the first 8 bits
-    int result = 0x0000;
-    int i = 0;
+    Uint32 clk_mask = 0xAAAA; //clock mask
+    Uint32 filter_mask = 0x00FF; //to filter first 8 bits
+    Uint32 bit_iterator = 0x0001;
+    Uint32 aux = input & filter_mask; //filters the first 8 bits
+    Uint32 result = 0x0000;
+    Uint32 i = 0;
 
     while( i < 7)
     {
@@ -517,14 +444,14 @@ int encode_manchester(int input)
     return result;
 }
 
-int decode_manchester(int input)
+Uint32 decode_manchester(Uint32 input)
 {
-    int filter_mask = 0xFFFF; //to filter first 16 bits
-    int mask_for_1 = 0x0001;
-    int aux = input & filter_mask; //filters the first 16 bits
-    int iterator_2_bits = 0x0003;
-    int result = 0x0000;
-    int i = 0;
+    Uint32 filter_mask = 0xFFFF; //to filter first 16 bits
+    Uint32 mask_for_1 = 0x0001;
+    Uint32 aux = input & filter_mask; //filters the first 16 bits
+    Uint32 iterator_2_bits = 0x0003;
+    Uint32 result = 0x0000;
+    Uint32 i = 0;
 
     while(i < 7)
     {
@@ -556,11 +483,29 @@ void show_init_msg()
     scia_msg(local_msg);
 }
 
+__interrupt void scib_isr(void)
+{
+    char  *local_msg;
+    static Uint32 pos = 0;
+    local_msg = "\r\n Interruption!\0";
+    scia_msg(local_msg);
 
+    arraymessage[pos] = ScibRegs.SCIRXBUF.all;
+    pos++;
+    if (pos == MAX_LEN)
+    {
+        pos = 0;
+    }
+
+
+    //ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
+    ScibRegs.SCIFFRX.bit.RXFFINTCLR=1;   // Clear Interrupt flag
+
+    PieCtrlRegs.PIEACK.all|=0x100;       // Issue PIE ack
+}
 
 
 
 
 // End of File
 //
-
