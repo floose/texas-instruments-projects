@@ -93,6 +93,10 @@
 //defines to activate certain functions
 #define GPIO_TOGGLE //configs and toggles gpio for monitoring
 
+//these values are for a 100'000 baud rat e (#todo verify this)
+#define LOW_DATA_RATE_REG 0x001c
+#define HIGH_DATA_RATE_REG 0x0000
+
 //these values are for a 200'000 baud rate
 //#define LOW_DATA_RATE_REG 0x000d
 //#define HIGH_DATA_RATE_REG 0x0000
@@ -106,8 +110,8 @@
 //#define LOW_DATA_RATE_REG 0x0017
 
 //thse values are the test values for 937 500 bps (aprox. 1 MHz)
-#define HIGH_DATA_RATE_REG 0x0000
-#define LOW_DATA_RATE_REG 0x0002
+//#define HIGH_DATA_RATE_REG 0x0000
+//#define LOW_DATA_RATE_REG 0x0002
 
 
 //utilize these defines to control the data rate of the console-pc application
@@ -116,7 +120,7 @@
 #define CONSOLE_LOW_DATA_RATE_REG  0x0017
 
 //define max length of word buffer
-#define MAX_LEN 30
+#define MAX_LEN 50
 
 //
 // Function Prototypes
@@ -137,12 +141,14 @@ void gpio0_toggle();
 
 Uint32 encode_manchester(Uint32 input);
 Uint32 decode_manchester(Uint32 input);
+Uint32 wrap_manchester_symbol(char lsb, char msb);
 
 //
 // Globals
 //
 //
 char arraymessage[MAX_LEN];
+Uint32 buffer_ready = 0;
 
 
 // Main
@@ -497,12 +503,10 @@ __interrupt void scib_isr(void)
         pos = 0;
     }
 
-
     ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
     ScibRegs.SCIFFRX.bit.RXFFINTCLR=1;   // Clear Interrupt flag
     PieCtrlRegs.PIEACK.all|=0x100;       // Issue PIE ack
 }
-
 
 
 
