@@ -94,12 +94,12 @@
 #define GPIO_TOGGLE //configs and toggles gpio for monitoring
 
 //these values are for a 100'000 baud rat e (#todo verify this)
-#define LOW_DATA_RATE_REG 0x001c
-#define HIGH_DATA_RATE_REG 0x0000
+//#define LOW_DATA_RATE_REG 0x001c
+//#define HIGH_DATA_RATE_REG 0x0000
 
 //these values are for a 200'000 baud rate
-//#define LOW_DATA_RATE_REG 0x000d
-//#define HIGH_DATA_RATE_REG 0x0000
+#define LOW_DATA_RATE_REG 0x000d
+#define HIGH_DATA_RATE_REG 0x0000
 
 //these values are test values for 9600 bps
 //#define HIGH_DATA_RATE_REG 0x0001;
@@ -120,6 +120,7 @@
 #define CONSOLE_LOW_DATA_RATE_REG  0x0017
 
 //define max length of word buffer
+//raw buffer, that is, its lenght is 2x the manchester words
 #define MAX_LEN 50
 
 //
@@ -134,6 +135,7 @@ void scia_msg(char *msg);
 void show_init_msg();
 __interrupt void scib_isr(void);
 
+
 #ifdef GPIO_TOGGLE
 void init_gpio_toggle();
 void gpio0_toggle();
@@ -147,9 +149,10 @@ Uint32 wrap_manchester_symbol(char lsb, char msb);
 // Globals
 //
 //
-char arraymessage[MAX_LEN];
-Uint32 buffer_ready = 0;
-
+char arraymessage[MAX_LEN]; //stores raw bits received
+Uint32 symbol_handler_flag = 0x0000;
+Uint32 msg_handler_flag = 0x0000;
+Uint32 dummy = 0;
 
 // Main
 //
@@ -157,7 +160,6 @@ void main(void)
 {
 
     Uint32 i;
-    //int manchester_symbol_decoded = 0;
 
     //zeroing the array
     for(i = 0; i < MAX_LEN; i++)
@@ -491,7 +493,9 @@ void show_init_msg()
 
 __interrupt void scib_isr(void)
 {
+    //tracks position of buffer
     static Uint32 pos = 0;
+
 
     arraymessage[pos] = ScibRegs.SCIRXBUF.all;
     pos++;
@@ -506,6 +510,7 @@ __interrupt void scib_isr(void)
     ScibRegs.SCIFFRX.bit.RXFFOVRCLR=1;   // Clear Overflow flag
     ScibRegs.SCIFFRX.bit.RXFFINTCLR=1;   // Clear Interrupt flag
     PieCtrlRegs.PIEACK.all|=0x100;       // Issue PIE ack
+    dummy++; //To check breakpoint and number of interrupts
 }
 
 
