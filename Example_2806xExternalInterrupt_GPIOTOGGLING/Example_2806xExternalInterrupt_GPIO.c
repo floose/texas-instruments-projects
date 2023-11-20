@@ -76,28 +76,22 @@
 //
 #define DELAY (CPU_RATE/1000*6*510)  //Qual period at 6 samples
 #define GPIO_TOGGLE
-#define MSG_SIZE 80
-#define THRESHOLD 500
+#define MSG_SIZE 20
 
 //
 // Function Prototypes
 //
 __interrupt void xint1_isr(void);
-__interrupt void timerCLK_isr(void);
-__interrupt void timerWIN_isr(void);
+__interrupt void xint2_isr(void);
 void InitInterrupts(void);
-void ConfigMyTimer0(void);
-void configADC(void);
-Uint32 process_buffer(void);
 
 //
 // Globals
 //
 volatile Uint32 Xint1Count;
-volatile Uint32 timer1Count;
-volatile Uint32 buffer_full = 0;
+volatile Uint32 Xint2Count;
 volatile Uint32 message[MSG_SIZE];
-volatile Uin32 msg_char = 0;
+volatile Uint32 var_char;
 Uint32 LoopCount;
 
 
@@ -106,8 +100,11 @@ Uint32 LoopCount;
 //
 void main(void)
 {
-
     Uint32 i = 0;
+    Xint1Count = 0;
+    Xint2Count = 0;
+    LoopCount = 0;      // Count times through idle loop
+    var_char = 0;
 
     //zeroing aux array
     for(i=0;i<MSG_SIZE;i++)
@@ -143,12 +140,6 @@ void main(void)
     // This function is found in the F2806x_PieCtrl.c file.
     //
     InitPieCtrl();
-    InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 22.5, 10);
-    ConfigCpuTimer(&CpuTimer1, 22.5, 300);
-    InitAdc();  // For this example, init the ADC
-    AdcOffsetSelfCal();
-    configADC();
     //
     // Disable CPU interrupts and clear all CPU interrupt flags
     //
@@ -183,18 +174,13 @@ void main(void)
     //
     // Clear the counters
     //
-    Xint1Count = 0;     // Count XINT1 interrupts
-    timer1Count = 0;    //dummy variable to check timer1 CLK manchester
-    LoopCount = 0;      // Count times through idle loop
-    sample = 0;
+
 
 
     for(;;)
     {
         //just to see if interruption is triggereed
         //GpioDataRegs.GPBSET.bit.GPIO32 = 1; // Lower GPIO32, trigger XINT1
-        if(timer1Count >= MSG_SIZE) timer1Count = 0;
-        if(buffer_full) msg_char = process_buffer();
         LoopCount++;
 
     }
@@ -208,36 +194,35 @@ void main(void)
 __interrupt void
 xint1_isr(void)
 {
-    GpioDataRegs.GPATOGGLE.bit.GPIO3= 1
+
+    //GpioDataRegs.GPATOGGLE.bit.GPIO4= 1;
+
+    GpioDataRegs.GPATOGGLE.bit.GPIO4 = 1;
+    var_char = var_char << 1; //appends 0 to var char
+    var_char |= 1; //transforms appended 0 to 1
+
     Xint1Count++;
-    CpuTimer0Regs.TCR.bit.TSS = 0; //start timer
     //
     // Acknowledge this interrupt to get more from group 1
     //
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 
-__interrupt void timerCLK_isr(void)
+
+
+__interrupt void
+xint2_isr(void)
 {
-
-    GpioDataRegs.GPATOGGLE.bit.GPIO4= 1;
-    AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //start conversion
-    //sample = AdcResult.ADCRESULT0;
-    message[timer1Count] = AdcResult.ADCRESULT0;
-    timer1Count++;
-    if(timer1Count == MSG_SIZE) buffer_full = 1;
-
-
+    GpioDataRegs.GPATOGGLE.bit.GPIO3= 1;
+    var_char = var_char << 1; //apends 0 to var_char
+    Xint2Count++;
     //
-    // Acknowledge this interrupt to receive more interrupts from group 1
+    // Acknowledge this interrupt to get more from group 1
     //
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 
-__interrupt void timerWIN_isr(void)
-{
-    CpuTimer0Regs.TCR.bit.TSS = 1; //stop timer
-}
+
 
 void InitInterrupts(void)
 {
@@ -247,7 +232,7 @@ void InitInterrupts(void)
     //
     EALLOW; // This is needed to write to EALLOW protected registers
     PieVectTable.XINT1 = &xint1_isr;
-    PieVectTable.TINT0 = &timerCLK_isr; //timer at the clock signal of 100 kHz
+    PieVectTable.XINT2 = &xint2_isr;
     EDIS;   // This is needed to disable write to EALLOW protected registers
 
     // Enable XINT1 and XINT2 in the PIE: Group 1 interrupt 4 & 5
@@ -255,26 +240,23 @@ void InitInterrupts(void)
     //
     PieCtrlRegs.PIECTRL.bit.ENPIE = 1;          // Enable the PIE block
     PieCtrlRegs.PIEIER1.bit.INTx4 = 1;          // Enable PIE Group 1 INT4 (XINT1)
-    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;          // Enable PIE Group 1 INT7 (timer)
-    IER |= M_INT1;                              // Enable CPU INT1
+    PieCtrlRegs.PIEIER1.bit.INTx5 = 1;          // Enable PIE Group 1 INT5 (timer)
+    IER |= M_INT1;
+    IER |= M_INT2;                              // Enable CPU INT2
     EINT;                                       // Enable Global Interrupts
 
-//
-    // GPIO32 is output
     //
-    EALLOW;
-    GpioCtrlRegs.GPBMUX1.bit.GPIO32 = 0;        // GPIO
-    GpioCtrlRegs.GPBDIR.bit.GPIO32 = 1;         // output
-    GpioDataRegs.GPBCLEAR.bit.GPIO32 = 1;         // Load the output latch to 0
-    EDIS;
-
-    //
-    // GPIO0 is input
+    // input
     //
     EALLOW;
     GpioCtrlRegs.GPAMUX1.bit.GPIO0 = 0;        // GPIO
     GpioCtrlRegs.GPADIR.bit.GPIO0 = 0;         // input
     GpioCtrlRegs.GPAQSEL1.bit.GPIO0 = 0;       // XINT1 Synch to SYSCLKOUT only
+
+    GpioCtrlRegs.GPAMUX1.bit.GPIO1 = 0;        // GPIO
+    GpioCtrlRegs.GPADIR.bit.GPIO1 = 0;         // input
+    GpioCtrlRegs.GPAQSEL1.bit.GPIO1 = 0;       // XINT1 Synch to SYSCLKOUT only
+
 
     /*This regulates the sampling window
     that is used in order to detect the interrupt. Or,
@@ -289,17 +271,23 @@ void InitInterrupts(void)
     //
     EALLOW;
     GpioIntRegs.GPIOXINT1SEL.bit.GPIOSEL = 0;   // XINT1 is GPIO0
+    GpioIntRegs.GPIOXINT2SEL.bit.GPIOSEL = 1;   // XINT2 is GPIO1
+
+
     EDIS;
 
     //
     // Configure XINT1
     //
     XIntruptRegs.XINT1CR.bit.POLARITY = 1;      // 0 - Falling edge interrupt / 1 - Rising Edge
+    XIntruptRegs.XINT2CR.bit.POLARITY = 0;
 
     //
     // Enable XINT1 and XINT2
     //
     XIntruptRegs.XINT1CR.bit.ENABLE = 1;        // Enable XINT1
+    XIntruptRegs.XINT2CR.bit.ENABLE = 1;        // Enable XINT2
+
 
 
     //
@@ -317,50 +305,8 @@ void InitInterrupts(void)
 
 }
 
-#ifdef GPIO_TOGGLE
 
 
-
-
-#endif
-
-
-void configADC(void)
-{
-    EALLOW;
-    AdcRegs.ADCCTL2.bit.ADCNONOVERLAP = 1; // Enable non-overlap mode
-    AdcRegs.ADCINTSOCSEL1.bit.SOC0 = 0; //No interrupt will trigger soc
-    //for this example, I will try to manually trigger the ADC inside the timer
-    //AdcRegs.ADCSOC0CTL.bit.TRIGSEL = 0x0001 //CPU TIMER 0 triggers (still needs testing)
-    AdcRegs.ADCSOC0CTL.bit.TRIGSEL = 0x0000; //Trigger software only
-    AdcRegs.ADCSOC0CTL.bit.ACQPS = 0x0006; //6+1 clock cycles sample and hold
-
-
-    AdcRegs.ADCSOC0CTL.bit.CHSEL     = 4;  // set SOC0 channel select to ADCINA4
-    EDIS;
-}
-
-Uint32 process_buffer(void)
-{
-    Uint32 i = 0;
-    Uint32 result = 0;
-    Uint32 sample = 0;
-    Uint32 last_sample = 0;
-
-    for(i=1; i < MSG_SIZE; i++)
-    {
-        sample = message[i];
-        last_sample = message[i-1]
-        if(sample > THRESHOLD && last_sample < THRESHOLD && sample < last_sample )
-            result << 0;
-        else
-        if(sample > THRESHOLD && last_sample < THRESHOLD && sample > last_sample)
-            result << 1;
-    }
-    //write code
-
-    buffer_full = 0;
-}
 
 /*
 void ConfigMyTimer0(void)
