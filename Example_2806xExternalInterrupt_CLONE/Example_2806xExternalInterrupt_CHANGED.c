@@ -216,9 +216,10 @@ xint1_isr(void)
 __interrupt void timerCLK_isr(void)
 {
 
-    //AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //start conversion
-    //sample = AdcResult.ADCRESULT0;
+    AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //start conversion
+    sample = AdcResult.ADCRESULT0;
     timer1Count++;
+    CpuTimer0Regs.TCR.bit.TSS = 1; //stop timer
     //
     // Acknowledge this interrupt to receive more interrupts from group 1
     //
