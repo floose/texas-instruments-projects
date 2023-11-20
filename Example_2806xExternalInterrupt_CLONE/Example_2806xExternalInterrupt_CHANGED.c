@@ -76,18 +76,19 @@
 //
 #define DELAY (CPU_RATE/1000*6*510)  //Qual period at 6 samples
 #define GPIO_TOGGLE
+#define MSG_SIZE 30
 
 //
 // Function Prototypes
 //
 __interrupt void xint1_isr(void);
 __interrupt void timerCLK_isr(void);
+__interrupt void timerWIN_isr(void);
 void InitInterrupts(void);
 void ConfigMyTimer0(void);
 void configADC(void);
 
 #ifdef GPIO_TOGGLE
-void init_gpio_toggle();
 void gpio22_toggle();
 #endif
 //
@@ -96,6 +97,7 @@ void gpio22_toggle();
 volatile Uint32 Xint1Count;
 volatile Uint32 timer1Count;
 volatile Uint32 sample;
+volatile Uint32 message[MSG_SIZE];
 Uint32 LoopCount;
 
 
@@ -105,6 +107,14 @@ Uint32 LoopCount;
 void main(void)
 {
     Uint32 TempX1Count;
+    Uint32 i = 0;
+
+    //zeroing aux array
+    for(i=0;i<MSG_SIZE;i++)
+    {
+        message[i] = 0;
+    }
+
     //
     // Step 1. Initialize System Control:
     // PLL, WatchDog, enable Peripheral Clocks
@@ -134,7 +144,8 @@ void main(void)
     //
     InitPieCtrl();
     InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 10, 100000);
+    ConfigCpuTimer(&CpuTimer0, 22.5, 1);
+    ConfigCpuTimer(&CpuTimer1, 22.5, 30);
     InitAdc();  // For this example, init the ADC
     AdcOffsetSelfCal();
     configADC();
@@ -181,18 +192,9 @@ void main(void)
     for(;;)
     {
         //just to see if interruption is triggereed
-        GpioDataRegs.GPBSET.bit.GPIO32 = 1; // Lower GPIO32, trigger XINT1
-
-        if(TempX1Count < 100000)
-        {
-            TempX1Count++;
-        }
-        else
-        {
-            GpioDataRegs.GPBCLEAR.bit.GPIO32 = 1;   // raise GPIO32
-            LoopCount++;
-            TempX1Count = 0;
-        }
+        //GpioDataRegs.GPBSET.bit.GPIO32 = 1; // Lower GPIO32, trigger XINT1
+        if(timer1Count >= MSG_SIZE) timer1Count = 0;
+        LoopCount++;
 
     }
 }
@@ -205,6 +207,7 @@ void main(void)
 __interrupt void
 xint1_isr(void)
 {
+    gpio22_toggle();
     Xint1Count++;
     CpuTimer0Regs.TCR.bit.TSS = 0; //start timer
     //
@@ -216,14 +219,21 @@ xint1_isr(void)
 __interrupt void timerCLK_isr(void)
 {
 
+    GpioDataRegs.GPATOGGLE.bit.GPIO4= 1;
     AdcRegs.ADCSOCFRC1.bit.SOC0 = 1; //start conversion
     sample = AdcResult.ADCRESULT0;
+    message[timer1Count] = sample;
     timer1Count++;
-    CpuTimer0Regs.TCR.bit.TSS = 1; //stop timer
+
     //
     // Acknowledge this interrupt to receive more interrupts from group 1
     //
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+
+__interrupt void timerWIN_isr(void)
+{
+    CpuTimer0Regs.TCR.bit.TSS = 1; //stop timer
 }
 
 void InitInterrupts(void)
@@ -297,6 +307,8 @@ void InitInterrupts(void)
     //pin 8 on F28069M
     GpioCtrlRegs.GPAMUX1.bit.GPIO3 = 0;        // GPIO
     GpioCtrlRegs.GPADIR.bit.GPIO3 = 1;         // output
+    GpioCtrlRegs.GPAMUX1.bit.GPIO4 = 0;        // GPIO
+    GpioCtrlRegs.GPADIR.bit.GPIO4 = 1;         // output
     EDIS;
 #endif
 
